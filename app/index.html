@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    .inputField {
+      background-color: yellow;
+      float: right;
+    }
+    p {
+      margin: 4px;
+      width: 350px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+    tr {
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      text-align: left;
+    }
+    .columns {
+      display: grid;
+      grid-template-columns: 450px 450px 450px 450px 450px 450px;
+    }
+  </style>
+</head>
+<body>
+  <h2 id="introlabel"></h2>
+  <hr>
+  <input type="checkbox" checked=True onclick="toggleCheckboxes(event)"> All/None </input>
+  <hr>
+  <div id='selectFields' class='columns'></div>
+  <hr>
+  <h3 id="showlabel"></h3>
+  <button onclick="pagePrev()"> Previous </button>
+  <button onclick="pageNext()"> Next </button>
+  <hr>
+  <table>
+    <tbody id="resultTable">
+    </tbody>
+  </table>
+</body>
+
+
+<script>
+  let PAGE = 1
+  let NPAGES = 1
+
+  /*
+  Run initially to dynamically create checkboxes and filters based on
+  columns from the data.
+  */
+  const loadInitial = async function(e) {
+    // load metadata
+    const response = await fetch('/getcolumns');
+    if (!response.ok) {
+      throw new Error(`Response status: ${response.status}`);
+    }
+    const result = await response.json();
+
+    // update title and header with filenmae
+    document.getElementById('introlabel').innerHTML = result['filename']
+    document.title = result['filename']
+
+    // populate filter section with checkboxes and input fields
+    columns = result['columns'];
+    selectFields = document.getElementById('selectFields')
+    const columnHeight = 5
+    let columnCounter = 0
+    let selectFieldColumn = document.createElement('div')
+    for (col of columns) {
+      columnCounter++
+
+      selectField = document.createElement('p')
+      selectField.className = "selection"
+
+      checkbox = document.createElement('input')
+      checkbox.type = "checkbox"
+      checkbox.checked = true
+      checkbox.onchange = update_and_reset_page
+      checkbox.className = "selectedFields"
+      checkbox.name = col
+      selectField.appendChild(checkbox)
+
+      selectFieldLabel = document.createElement('label')
+      selectFieldLabel.innerHTML = col
+      selectField.appendChild(selectFieldLabel)
+
+      selectFieldInput = document.createElement('input')
+      selectFieldInput.className = 'inputField'
+      selectFieldInput.onchange = update_and_reset_page
+      selectField.appendChild(selectFieldInput)
+
+      selectFieldColumn.appendChild(selectField)
+
+      // create new filter column when max height has been reached
+      if (columnCounter == columnHeight) {
+        columnCounter = 0
+        selectFields.appendChild(selectFieldColumn)
+        selectFieldColumn = document.createElement('div')
+      }
+    }
+
+    // leftover
+    if (columnCounter) {
+        selectFields.appendChild(selectFieldColumn)
+    }
+
+    // update (run search) based on inital setup
+    update()
+  }
+
+  /*
+  Main update function which runs on each change that should
+  trigger a new search, based on updated filters / search options
+  */
+  const update = async function(e) {
+
+    let url = '/search/?page=' + PAGE + '&'
+
+    // go through all filters, update view and build url for search
+    for (selection of document.getElementsByClassName('selection')) {
+      checkbox = selection.getElementsByClassName('selectedFields')[0]
+      inputField = selection.getElementsByClassName('inputField')[0]
+      inputField.disabled = !checkbox.checked
+      inputField.style.backgroundColor = checkbox.checked ? 'yellow' : 'lightgray'
+      if (checkbox.checked) {
+        url += 'q=' + checkbox.name + ',' + inputField.value + '&'
+      }
+    }
+
+    // call backend with search options
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Response status: ${response.status}`);
+    }
+    const searchResult = await response.json();
+
+    // clear table
+    // add header
+    table = document.getElementById("resultTable")
+    table.innerHTML = ''
+    header = document.createElement('tr')
+    for (column of searchResult.columns) {
+      th = document.createElement('th')
+      th.innerHTML = column
+      header.appendChild(th)
+    }
+    table.appendChild(header)
+
+    // add rows
+    for (row of searchResult.rows) {
+      tr = document.createElement('tr')
+      for (column of searchResult.columns) {
+        td = document.createElement('td')
+        td.innerHTML = row[column]
+        tr.appendChild(td)
+      }
+      table.appendChild(tr)
+    }
+
+    // update meta information
+    showlabel = document.getElementById("showlabel")
+    showlabel.innerHTML = 'Showing row  ' + searchResult.showing_range +
+      '<br> Page ' + PAGE + ' / ' + searchResult.page_count + '<br> Total: '
+      + searchResult.count + ' rows'
+    NPAGES = searchResult.page_count
+  }
+
+  // change filter => reset page to 1
+  const update_and_reset_page = function() {
+    PAGE = 1
+    update()
+  }
+
+  // select / deselect all checkboxes
+  const toggleCheckboxes = function(event) {
+    for (checkbox of document.getElementsByClassName('selectedFields')) {
+      checkbox.checked = event.target.checked
+    }
+    update_and_reset_page()
+  }
+
+
+  // pagination functions
+  const pagePrev = function() {
+    PAGE = Math.max(PAGE - 1, 1)
+    update()
+  }
+
+  const pageNext = function() {
+    PAGE = Math.min(PAGE + 1, NPAGES)
+    update()
+  }
+
+  // run initial load
+  loadInitial()
+
+</script>
+
+</html>
+
+
+
+</body>
+</html>
